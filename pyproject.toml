@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "gptflow"
+version = "0.1.0"
+description = "Service with external helpers for the OpenAI API"
+authors = ["Nikolay Bayborodin <nbbrdn@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.110.2"
+uvicorn = {extras = ["standard"], version = "^0.29.0"}
+gunicorn = "^22.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

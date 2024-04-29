@@ -1,0 +1,20 @@
+version: '3'
+services:
+  api:
+    build: .
+    command: ["gunicorn", "-c", "gunicorn_conf.py", "main:app"]
+    volumes:
+      - .:/app:ro
+    expose:
+      - 80
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fastapi.rule=Host(`flow.localhost`)"
+  traefik:
+    image: traefik:v2.9.6
+    ports:
+      - 8008:80
+      - 8081:8080
+    volumes:
+      - "./traefik.dev.toml:/etc/traefik/traefik.toml"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
