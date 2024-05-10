@@ -1,3 +1,5 @@
 .venv/
 docker-compose.prod.yaml
 traefik.prod.toml
+
+__pycache__/

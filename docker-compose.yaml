@@ -1,7 +1,19 @@
 version: '3'
 services:
+  db:
+    container_name: "db"
+    image: postgres:14.1-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
   api:
     build: .
+    env_file:
+      - ./.env
     command: ["gunicorn", "-c", "gunicorn_conf.py", "main:app"]
     volumes:
       - .:/app:ro
