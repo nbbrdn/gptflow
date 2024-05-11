@@ -5,13 +5,14 @@ import uuid
 from fastapi import FastAPI, Query
 from fastapi.routing import APIRouter
 from datetime import datetime, timezone, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, GetCoreSchemaHandler
+from pydantic_core import CoreSchema, core_schema
 from sqlalchemy import Column, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
-from typing import Any, Dict, List
+from typing import Any, List
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -43,7 +44,11 @@ class GptFunction(Base):
     name = Column(String, nullable=False, unique=True)
     description = Column(String, nullable=True)
 
-    parameters = relationship("FunctionParameter", backref="function")
+    parameters = relationship(
+        "FunctionParameter",
+        back_populates="function",
+        lazy="selectin",
+    )
 
 
 class FunctionParameter(Base):
@@ -53,15 +58,28 @@ class FunctionParameter(Base):
     function_id = Column(
         UUID(as_uuid=True), ForeignKey("gpt_functions.id"), nullable=False
     )
+    function = relationship("GptFunction", back_populates="parameters")
     name = Column(String, nullable=False)
     param_type = Column(String, nullable=False)
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.no_info_after_validator_function(cls, handler(str))
+
+
+class FunctionParameterMetadata(TunedModel):
+    id: uuid.UUID
+    name: str
+    param_type: str
 
 
 class FunctionMetadata(TunedModel):
     id: uuid.UUID
     name: str
     description: str
-    parameters: List[FunctionParameter]
+    parameters: List[FunctionParameterMetadata]
 
 
 class FunctionDelcaration(BaseModel):
