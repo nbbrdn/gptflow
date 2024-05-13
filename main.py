@@ -7,12 +7,19 @@ from fastapi.routing import APIRouter
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from sqlalchemy import Column, ForeignKey, String
+from sqlalchemy import Column, ForeignKey, String, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from typing import Any, List
+
+from metadata import (
+    GPTToolMetadata,
+    FunctionMetadata,
+    FunctionSignatureMetadata,
+    FunctionParameterMetadata,
+)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -28,13 +35,6 @@ engine = create_async_engine(DATABASE_URL, future=True, echo=True)
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 Base = declarative_base()
-
-
-class TunedModel(BaseModel):
-    class Config:
-        """tells pydantic to convert even non dict obj to json"""
-
-        from_attributes = True
 
 
 class GptFunction(Base):
@@ -61,25 +61,14 @@ class FunctionParameter(Base):
     function = relationship("GptFunction", back_populates="parameters")
     name = Column(String, nullable=False)
     param_type = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    required = Column(Boolean, nullable=True, default=True)
 
     @classmethod
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: GetCoreSchemaHandler
     ) -> CoreSchema:
         return core_schema.no_info_after_validator_function(cls, handler(str))
-
-
-class FunctionParameterMetadata(TunedModel):
-    id: uuid.UUID
-    name: str
-    param_type: str
-
-
-class FunctionMetadata(TunedModel):
-    id: uuid.UUID
-    name: str
-    description: str
-    parameters: List[FunctionParameterMetadata]
 
 
 class FunctionDelcaration(BaseModel):
@@ -122,33 +111,43 @@ async def _register_function(body: FunctionDelcaration) -> FunctionMetadata:
                 name=body.name, description=body.description, parameters=body.parameters
             )
             return FunctionMetadata(
-                id=new_function.id,
                 name=new_function.name,
                 description=new_function.description,
                 parameters=new_function.parameters,
             )
 
 
-async def _list_gpt_functions() -> List[FunctionMetadata]:
+async def _list_gpt_functions() -> List[GPTToolMetadata]:
     async with async_session() as session:
         async with session.begin():
             function_dal = FunctionDAL(session)
             result = await function_dal.list_functions()
-            functions = [
-                FunctionMetadata(
-                    id=function.id,
-                    name=function.name,
-                    description=function.description,
-                    parameters=[
-                        FunctionParameter(
-                            id=param.id, name=param.name, param_type=param.param_type
-                        )
-                        for param in function.parameters
-                    ],
+
+            gpt_tools = []
+            for function in result.scalars():
+                properties = {}
+                required = []
+                for param in function.parameters:
+                    properties[param.name] = FunctionParameterMetadata(
+                        type=param.param_type,
+                        description=param.description,
+                    )
+                    if param.required:
+                        required.append(param.name)
+
+                gpt_tool = GPTToolMetadata(
+                    type="function",
+                    function=FunctionMetadata(
+                        name=function.name,
+                        description=function.description,
+                        parameters=FunctionSignatureMetadata(
+                            type="object", properties=properties, required=required
+                        ),
+                    ),
                 )
-                for function in result.scalars()
-            ]
-            return functions
+                gpt_tools.append(gpt_tool)
+
+            return gpt_tools
 
 
 @function_registry_router.post("/", response_model=FunctionMetadata)
@@ -156,8 +155,8 @@ async def register_gpt_function(body: FunctionDelcaration) -> FunctionMetadata:
     return await _register_function(body)
 
 
-@function_registry_router.get("/", response_model=List[FunctionMetadata])
-async def list_gpt_functions() -> List[FunctionMetadata]:
+@function_registry_router.get("/", response_model=List[GPTToolMetadata])
+async def list_gpt_functions() -> List[GPTToolMetadata]:
     return await _list_gpt_functions()
 
 
