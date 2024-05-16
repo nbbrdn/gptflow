@@ -1,7 +1,22 @@
 version: '3'
 services:
+  db:
+    container_name: "db"
+    image: postgres:14.1-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
+      
   api:
     build: .
+    env_file:
+      - ./.env
     command: ["gunicorn", "-c", "gunicorn_conf.py", "main:app"]
     volumes:
       - .:/app:ro
@@ -30,3 +45,6 @@ services:
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.middlewares=auth"
       - "traefik.http.middlewares.auth.basicauth.users=username:encrypted-password"
+
+volumes:
+  postgres_data:
